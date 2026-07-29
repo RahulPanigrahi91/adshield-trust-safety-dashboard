@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>AdShield: Microsoft Ads Trust & Safety Risk Cockpit</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+:root{
+  --navy:#0b1220; --navy2:#111a2e; --card:#141d33; --border:#22304d;
+  --text:#e8edf7; --muted:#8b9bc1; --blue:#4d8dff; --green:#3ecf8e;
+  --amber:#f5b942; --red:#ef5757;
+}
+*{box-sizing:border-box;}
+body{margin:0;font-family:'Segoe UI',Arial,sans-serif;background:var(--navy);color:var(--text);}
+.app{display:flex;min-height:100vh;}
+.sidebar{width:220px;background:var(--navy2);border-right:1px solid var(--border);
+  position:fixed;top:0;left:0;height:100vh;padding-top:80px;}
+.sidebar h1{font-size:18px;padding:0 20px;margin:0;color:var(--blue);}
+.sidebar p{font-size:11px;color:var(--muted);padding:0 20px;margin:4px 0 20px;}
+.navitem{display:block;padding:12px 20px;color:var(--muted);cursor:pointer;font-size:14px;
+  border-left:3px solid transparent;transition:.2s;}
+.navitem:hover,.navitem.active{color:var(--text);border-left:3px solid var(--blue);background:#16223d;}
+.header{position:fixed;top:0;left:220px;right:0;height:60px;background:var(--navy2);
+  border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 30px;z-index:10;}
+.header h2{margin:0;font-size:20px;}
+.header span{color:var(--muted);font-size:13px;margin-left:12px;}
+.main{margin-left:220px;margin-top:60px;padding:30px;flex:1;}
+.section{margin-bottom:60px;scroll-margin-top:70px;}
+.section h3{font-size:19px;border-bottom:1px solid var(--border);padding-bottom:10px;margin-bottom:20px;}
+.kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px;}
+.kpi-card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px;}
+.kpi-card .label{font-size:12px;color:var(--muted);}
+.kpi-card .value{font-size:26px;font-weight:600;margin:6px 0;}
+.kpi-card .delta{font-size:12px;}
+.delta.up{color:var(--red);} .delta.down{color:var(--green);}
+.card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:20px;margin-bottom:20px;}
+select,input,button{background:#0f1830;color:var(--text);border:1px solid var(--border);
+  border-radius:6px;padding:8px 12px;font-size:13px;}
+button{background:var(--blue);cursor:pointer;border:none;font-weight:600;}
+button:hover{opacity:.9;}
+.controls{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;align-items:center;}
+table{width:100%;border-collapse:collapse;font-size:13px;}
+th,td{padding:8px 10px;text-align:left;border-bottom:1px solid var(--border);}
+th{color:var(--muted);font-weight:500;cursor:pointer;}
+tr:hover{background:#182746;cursor:pointer;}
+.badge{padding:3px 8px;border-radius:12px;font-size:11px;font-weight:600;}
+.badge.Low{background:#1e3a2c;color:var(--green);}
+.badge.Medium{background:#3a3315;color:var(--amber);}
+.badge.High{background:#3a2415;color:#ff9b45;}
+.badge.Critical{background:#3a1518;color:var(--red);}
+.detail-panel{background:#0f1830;border:1px dashed var(--border);border-radius:8px;padding:16px;margin-top:10px;display:none;}
+.report-card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:24px;}
+.report-summary{background:#0f1830;padding:16px;border-radius:8px;margin-top:16px;line-height:1.6;font-size:14px;}
+.multi-select{display:flex;gap:8px;flex-wrap:wrap;}
+.chip{padding:6px 12px;border:1px solid var(--border);border-radius:16px;cursor:pointer;font-size:12px;color:var(--muted);}
+.chip.active{background:var(--blue);color:white;border-color:var(--blue);}
+canvas{max-height:320px;}
+.small-note{font-size:11px;color:var(--muted);margin-top:6px;}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="sidebar">
+    <h1>AdShield</h1>
+    <p>Microsoft AI &middot; Bing / Copilot / MSN / Edge Ads Trust &amp; Safety</p>
+    <div class="navitem active" data-target="scorecard">Risk Scorecard</div>
+    <div class="navitem" data-target="anomaly">Anomaly Engine</div>
+    <div class="navitem" data-target="report">Executive Report</div>
+    <div class="navitem" data-target="explorer">Drill-down Explorer</div>
+  </div>
+  <div class="header">
+    <h2>AdShield</h2><span>Trust & Safety Risk Cockpit for Bing, Copilot, MSN & Edge Ads</span>
+  </div>
+  <div class="main">
+
+    <div class="section" id="scorecard">
+      <h3>Risk Scorecard</h3>
+      <div class="kpi-grid" id="kpiGrid"></div>
+      <div class="card">
+        <div class="controls">
+          <label>Range:</label>
+          <select id="rangeSelect">
+            <option value="7">Last 7 days</option>
+            <option value="30" selected>Last 30 days</option>
+            <option value="90">Last 90 days</option>
+          </select>
+        </div>
+        <canvas id="kpiTrendChart"></canvas>
+      </div>
+    </div>
+
+    <div class="section" id="anomaly">
+      <h3>Anomaly Detection Engine</h3>
+      <div class="card"><canvas id="anomalyChart"></canvas></div>
+      <div class="card">
+        <table id="anomalyTable">
+          <thead><tr><th>Date</th><th>Advertiser</th><th>Category</th><th>Metric</th>
+          <th>Actual</th><th>Expected Range</th><th>Severity</th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <div class="detail-panel" id="detailPanel"><canvas id="detailChart"></canvas></div>
+      </div>
+    </div>
+
+    <div class="section" id="report">
+      <h3>Executive Risk Report</h3>
+      <div class="report-card">
+        <button id="genReportBtn">Generate Weekly Report</button>
+        <div id="reportOutput"></div>
+      </div>
+    </div>
+
+    <div class="section" id="explorer">
+      <h3>Drill-down Explorer</h3>
+      <div class="card">
+        <div class="controls">
+          <div>
+            <label>Category:</label>
+            <div class="multi-select" id="catChips"></div>
+          </div>
+          <label style="margin-left:20px;"><input type="checkbox" id="anomalyOnly"> Anomalies only</label>
+        </div>
+        <canvas id="explorerBarChart" style="max-height:250px;"></canvas>
+      </div>
+      <div class="card" style="max-height:500px;overflow:auto;">
+        <table id="explorerTable">
+          <thead><tr>
+            <th data-key="date">Date</th><th data-key="advertiser_id">Advertiser</th>
+            <th data-key="advertiser_category">Category</th><th data-key="ad_spend">Spend</th>
+            <th data-key="impressions">Impressions</th><th data-key="confirmed_violations">Violations</th>
+            <th data-key="false_positive_flags">FP</th><th data-key="action_taken_count">Actions</th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ---------- 1. SYNTHETIC DATA GENERATION ----------
+const CATEGORIES = ["Bing Search Ads","Copilot Sponsored Answers","MSN Native Ads","Edge New Tab Ads"];
+const ADVERTISERS = [];
+for(let i=1;i<=20;i++){
+  ADVERTISERS.push({id:"ADV-"+String(i).padStart(3,'0'), category: CATEGORIES[i % 4]});
+}
+const DAYS = 90;
+const today = new Date();
+function dateStr(offset){
+  const d = new Date(today); d.setDate(d.getDate() - (DAYS-1-offset));
+  return d.toISOString().slice(0,10);
+}
+function rand(min,max){return Math.random()*(max-min)+min;}
+function gauss(mean,sd){
+  let u=0,v=0; while(u===0)u=Math.random(); while(v===0)v=Math.random();
+  return mean + sd*Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v);
+}
+
+let DATA = [];
+ADVERTISERS.forEach(adv=>{
+  const baseSpend = adv.category==="Copilot Sponsored Answers"? rand(3000,6000): rand(1500,4000);
+  const baseImpr = rand(50000,150000);
+  const baseViolRate = adv.category==="Copilot Sponsored Answers"? 0.006 : adv.category==="MSN Native Ads"? 0.003 : 0.0015;
+  for(let d=0; d<DAYS; d++){
+    const spend = Math.max(200, gauss(baseSpend, baseSpend*0.12));
+    const impressions = Math.max(1000, Math.round(gauss(baseImpr, baseImpr*0.1)));
+    const clicks = Math.round(impressions * rand(0.01,0.04));
+    const reported_violations = Math.max(0, Math.round(gauss(impressions*baseViolRate*1.3, 3)));
+    const confirmed_violations = Math.max(0, Math.round(reported_violations * rand(0.55,0.85)));
+    const false_positive_flags = Math.max(0, reported_violations - confirmed_violations);
+    const human_reviewed_count = Math.max(confirmed_violations+false_positive_flags, Math.round(reported_violations*rand(0.9,1.2)));
+    const action_taken_count = Math.round(confirmed_violations * rand(0.8,0.98));
+    DATA.push({
+      date: dateStr(d), advertiser_id: adv.id, advertiser_category: adv.category,
+      ad_spend: Math.round(spend), impressions, clicks,
+      reported_violations, confirmed_violations, false_positive_flags,
+      human_reviewed_count, action_taken_count
+    });
+  }
+});
+
+// Inject 7 deliberate anomalies
+const anomalyLog = [];
+for(let i=0;i<7;i++){
+  const adv = ADVERTISERS[Math.floor(rand(0,20))];
+  const dayIdx = Math.floor(rand(10,DAYS-5));
+  const rec = DATA.find(r=>r.advertiser_id===adv.id && r.date===dateStr(dayIdx));
+  const type = Math.floor(rand(0,3));
+  if(type===0){ rec.ad_spend = Math.round(rec.ad_spend * rand(3,5)); anomalyLog.push({date:rec.date,adv:adv.id,type:"spend spike"}); }
+  else if(type===1){ rec.reported_violations = Math.round(rec.reported_violations * rand(4,7) + 15);
+    rec.confirmed_violations = Math.round(rec.reported_violations*0.7);
+    rec.false_positive_flags = rec.reported_violations - rec.confirmed_violations;
+    anomalyLog.push({date:rec.date,adv:adv.id,type:"violation surge"}); }
+  else { rec.clicks = Math.round(rec.clicks * rand(0.1,0.3)); anomalyLog.push({date:rec.date,adv:adv.id,type:"CTR drop"}); }
+}
+
+// ---------- 2. KPI CALCULATIONS ----------
+function aggregateByDate(data){
+  const map = {};
+  data.forEach(r=>{
+    if(!map[r.date]) map[r.date] = {date:r.date, impressions:0, confirmed_violations:0,
+      false_positive_flags:0, action_taken_count:0, human_reviewed_count:0, ad_spend:0, reported_violations:0};
+    const m = map[r.date];
+    m.impressions += r.impressions; m.confirmed_violations += r.confirmed_violations;
+    m.false_positive_flags += r.false_positive_flags; m.action_taken_count += r.action_taken_count;
+    m.human_reviewed_count += r.human_reviewed_count; m.ad_spend += r.ad_spend;
+    m.reported_violations += r.reported_violations;
+  });
+  return Object.values(map).sort((a,b)=>a.date.localeCompare(b.date));
+}
+const dailyAgg = aggregateByDate(DATA);
+
+function computeKPIs(row){
+  const prevalence = row.impressions? (row.confirmed_violations/row.impressions)*1000 : 0;
+  const fpr = (row.false_positive_flags+row.confirmed_violations)? row.false_positive_flags/(row.false_positive_flags+row.confirmed_violations) : 0;
+  const actionRate = row.human_reviewed_count? row.action_taken_count/row.human_reviewed_count : 0;
+  const precision = (row.confirmed_violations+row.false_positive_flags)? row.confirmed_violations/(row.confirmed_violations+row.false_positive_flags) : 0;
+  return {prevalence, fpr, actionRate, precision};
+}
+const kpiSeries = dailyAgg.map(row=>({date:row.date, ...computeKPIs(row)}));
+
+function renderKPICards(){
+  const last = kpiSeries[kpiSeries.length-1];
+  const prev7 = kpiSeries[kpiSeries.length-8] || kpiSeries[0];
+  const items = [
+    {label:"Violation Prevalence (‰)", key:"prevalence", fmt:v=>v.toFixed(2)},
+    {label:"False Positive Rate", key:"fpr", fmt:v=>(v*100).toFixed(1)+"%"},
+    {label:"Action Rate", key:"actionRate", fmt:v=>(v*100).toFixed(1)+"%"},
+    {label:"Precision", key:"precision", fmt:v=>(v*100).toFixed(1)+"%"},
+  ];
+  const grid = document.getElementById("kpiGrid");
+  grid.innerHTML = "";
+  items.forEach(it=>{
+    const delta = last[it.key] - prev7[it.key];
+    const isBad = (it.key==="fpr" || it.key==="prevalence") ? delta>0 : delta<0;
+    const dirClass = delta===0? "" : (isBad? "up":"down");
+    const arrow = delta>0? "▲" : (delta<0? "▼":"–");
+    grid.innerHTML += `<div class="kpi-card">
+      <div class="label">${it.label}</div>
+      <div class="value">${it.fmt(last[it.key])}</div>
+      <div class="delta ${dirClass}">${arrow} ${Math.abs(delta*(it.key==='prevalence'?1:100)).toFixed(2)}${it.key==='prevalence'?'':'%'} vs 7d ago</div>
+    </div>`;
+  });
+}
+renderKPICards();
+
+let kpiChart;
+function renderKPIChart(rangeDays){
+  const slice = kpiSeries.slice(-rangeDays);
+  const ctx = document.getElementById("kpiTrendChart");
+  if(kpiChart) kpiChart.destroy();
+  kpiChart = new Chart(ctx, {
+    type:'line',
+    data:{ labels: slice.map(r=>r.date),
+      datasets:[
+        {label:"Prevalence (‰)", data:slice.map(r=>r.prevalence), borderColor:"#4d8dff", tension:.3, yAxisID:'y'},
+        {label:"FPR", data:slice.map(r=>r.fpr*100), borderColor:"#ef5757", tension:.3, yAxisID:'y1'},
+        {label:"Action Rate", data:slice.map(r=>r.actionRate*100), borderColor:"#3ecf8e", tension:.3, yAxisID:'y1'},
+        {label:"Precision", data:slice.map(r=>r.precision*100), borderColor:"#f5b942", tension:.3, yAxisID:'y1'},
+      ]},
+    options:{responsive:true, interaction:{mode:'index',intersect:false},
+      scales:{ y:{position:'left', title:{display:true,text:'Prevalence (‰)'}, grid:{color:'#22304d'}},
+        y1:{position:'right', title:{display:true,text:'%'}, grid:{display:false}} },
+      plugins:{legend:{labels:{color:'#e8edf7'}}} ,
+      color:'#e8edf7'
+    }
+  });
+}
+renderKPIChart(30);
+document.getElementById("rangeSelect").addEventListener("change", e=>renderKPIChart(parseInt(e.target.value)));
+
+// ---------- 3. ANOMALY DETECTION ----------
+function rollingStats(values, idx, window=7){
+  const start = Math.max(0, idx-window);
+  const slice = values.slice(start, idx);
+  if(slice.length<3) return null;
+  const mean = slice.reduce((a,b)=>a+b,0)/slice.length;
+  const variance = slice.reduce((a,b)=>a+(b-mean)**2,0)/slice.length;
+  const sd = Math.sqrt(variance) || 0.0001;
+  return {mean, sd};
+}
+function severityBucket(z){
+  const az = Math.abs(z);
+  if(az>=4) return "Critical";
+  if(az>=3.2) return "High";
+  if(az>=2.5) return "Medium";
+  return "Low";
+}
+
+const anomalies = [];
+ADVERTISERS.forEach(adv=>{
+  const rows = DATA.filter(r=>r.advertiser_id===adv.id).sort((a,b)=>a.date.localeCompare(b.date));
+  ["ad_spend","reported_violations"].forEach(metric=>{
+    const values = rows.map(r=> metric==="cpm"? r.ad_spend/r.impressions*1000 : r[metric]);
+    values.forEach((v,idx)=>{
+      const stats = rollingStats(values, idx);
+      if(!stats) return;
+      const z = (v-stats.mean)/stats.sd;
+      if(Math.abs(z) >= 2.5){
+        anomalies.push({
+          date: rows[idx].date, advertiser: adv.id, category: adv.category,
+          metric: metric==="ad_spend"?"Ad Spend": metric==="reported_violations"?"Reported Violations":"CPM-like Ratio",
+          actual: v.toFixed(2),
+          expectedLow: (stats.mean-2.5*stats.sd).toFixed(2), expectedHigh: (stats.mean+2.5*stats.sd).toFixed(2),
+          z: z, severity: severityBucket(z), idx: idx, metricKey: metric
+        });
+      }
+    });
+  });
+  // CPM-like ratio
+  const cpm = rows.map(r=> r.impressions? (r.ad_spend/r.impressions*1000):0);
+  cpm.forEach((v,idx)=>{
+    const stats = rollingStats(cpm, idx);
+    if(!stats) return;
+    const z = (v-stats.mean)/stats.sd;
+    if(Math.abs(z)>=2.5){
+      anomalies.push({
+        date: rows[idx].date, advertiser: adv.id, category: adv.category,
+        metric:"CPM-like Ratio", actual: v.toFixed(2),
+        expectedLow:(stats.mean-2.5*stats.sd).toFixed(2), expectedHigh:(stats.mean+2.5*stats.sd).toFixed(2),
+        z:z, severity: severityBucket(z), idx: idx, metricKey:"cpm"
+      });
+    }
+  });
+});
+anomalies.sort((a,b)=>b.date.localeCompare(a.date) || Math.abs(b.z)-Math.abs(a.z));
+
+function renderAnomalyTable(){
+  const tbody = document.querySelector("#anomalyTable tbody");
+  tbody.innerHTML = "";
+  anomalies.slice(0,80).forEach((a,i)=>{
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${a.date}</td><td>${a.advertiser}</td><td>${a.category}</td>
+      <td>${a.metric}</td><td>${a.actual}</td><td>${a.expectedLow} – ${a.expectedHigh}</td>
+      <td><span class="badge ${a.severity}">${a.severity}</span></td>`;
+    tr.addEventListener("click", ()=>showDetail(a));
+    tbody.appendChild(tr);
+  });
+}
+renderAnomalyTable();
+
+let detailChart;
+function showDetail(a){
+  const panel = document.getElementById("detailPanel");
+  panel.style.display = "block";
+  panel.scrollIntoView({behavior:"smooth", block:"nearest"});
+  const rows = DATA.filter(r=>r.advertiser_id===a.advertiser).sort((x,y)=>x.date.localeCompare(y.date));
+  const idx = rows.findIndex(r=>r.date===a.date);
+  const start = Math.max(0, idx-7), end = Math.min(rows.length, idx+7);
+  const window = rows.slice(start,end);
+  const key = a.metricKey==="cpm"? null : a.metricKey;
+  const values = window.map(r=> key? r[key] : (r.ad_spend/r.impressions*1000));
+  const ctx = document.getElementById("detailChart");
+  if(detailChart) detailChart.destroy();
+  detailChart = new Chart(ctx,{type:'line',
+    data:{labels:window.map(r=>r.date), datasets:[{label:a.metric+" ("+a.advertiser+")", data:values,
+      borderColor:"#f5b942", backgroundColor:"rgba(245,185,66,.15)", fill:true, tension:.3,
+      pointBackgroundColor: window.map(r=>r.date===a.date?"#ef5757":"#4d8dff"),
+      pointRadius: window.map(r=>r.date===a.date?7:3)
+    }]},
+    options:{plugins:{legend:{labels:{color:'#e8edf7'}}, title:{display:true,text:'14-day context around anomaly', color:'#e8edf7'}},
+      scales:{x:{ticks:{color:'#8b9bc1'}},y:{ticks:{color:'#8b9bc1'},grid:{color:'#22304d'}}}}
+  });
+}
+
+let anomalyChart;
+function renderAnomalyChart(){
+  const colorMap = {Low:"#3ecf8e", Medium:"#f5b942", High:"#ff9b45", Critical:"#ef5757"};
+  const ctx = document.getElementById("anomalyChart");
+  anomalyChart = new Chart(ctx, {
+    type:'scatter',
+    data:{ datasets:[{
+      label:"Anomaly Severity (|z-score|)",
+      data: anomalies.map(a=>({x:a.date, y:Math.abs(a.z).toFixed(2)})),
+      backgroundColor: anomalies.map(a=>colorMap[a.severity]),
+      pointRadius: 6
+    }]},
+    options:{
+      plugins:{legend:{labels:{color:'#e8edf7'}}, title:{display:true, text:'Anomaly Severity Over Time', color:'#e8edf7'}},
+      scales:{ x:{type:'category', ticks:{color:'#8b9bc1', maxTicksLimit:12}},
+               y:{title:{display:true,text:'|z-score|',color:'#8b9bc1'}, ticks:{color:'#8b9bc1'}, grid:{color:'#22304d'}} }
+    }
+  });
+}
+renderAnomalyChart();
+
+// ---------- 4. EXECUTIVE REPORT ----------
+document.getElementById("genReportBtn").addEventListener("click", ()=>{
+  const last7dates = kpiSeries.slice(-7);
+  const prior7dates = kpiSeries.slice(-14,-7);
+  const avg = (arr,key)=> arr.reduce((a,b)=>a+b[key],0)/arr.length;
+  const kpiChange = {};
+  ["prevalence","fpr","actionRate","precision"].forEach(k=>{
+    const cur = avg(last7dates,k), prior = avg(prior7dates,k);
+    kpiChange[k] = prior? ((cur-prior)/prior*100) : 0;
+  });
+  const recentAnomalies = anomalies.filter(a=> a.date >= last7dates[0].date).sort((a,b)=>Math.abs(b.z)-Math.abs(a.z));
+  const top3 = recentAnomalies.slice(0,3);
+
+  const last7Records = DATA.filter(r=> r.date >= last7dates[0].date);
+  const violByCat = {};
+  let totalViol = 0;
+  last7Records.forEach(r=>{
+    violByCat[r.advertiser_category] = (violByCat[r.advertiser_category]||0) + r.confirmed_violations;
+    totalViol += r.confirmed_violations;
+  });
+  const topCat = Object.entries(violByCat).sort((a,b)=>b[1]-a[1])[0];
+  const topCatPct = totalViol? (topCat[1]/totalViol*100).toFixed(0) : 0;
+
+  const criticalCount = recentAnomalies.filter(a=>a.severity==="Critical").length;
+  const prevalenceDir = kpiChange.prevalence>=0? "rose":"fell";
+
+  const summary = `This week, violation prevalence ${prevalenceDir} ${Math.abs(kpiChange.prevalence).toFixed(1)}% week-over-week, driven primarily by the ${topCat[0]} category (${topCatPct}% of confirmed violations). False positive rate moved ${kpiChange.fpr>=0?'up':'down'} ${Math.abs(kpiChange.fpr).toFixed(1)}%, action rate changed ${kpiChange.actionRate>=0?'+':''}${kpiChange.actionRate.toFixed(1)}%, and precision changed ${kpiChange.precision>=0?'+':''}${kpiChange.precision.toFixed(1)}%. ${criticalCount} critical-severity anomal${criticalCount===1?'y was':'ies were'} detected this week, the highest being a ${top3[0]? top3[0].metric.toLowerCase(): 'N/A'} anomaly on advertiser ${top3[0]? top3[0].advertiser:'N/A'} (z-score ${top3[0]? Math.abs(top3[0].z).toFixed(1):'N/A'}).`;
+
+  const out = document.getElementById("reportOutput");
+  out.innerHTML = `
+    <h4 style="margin-top:20px;">Top 3 Anomalies (Last 7 Days)</h4>
+    <table><thead><tr><th>Date</th><th>Advertiser</th><th>Metric</th><th>Severity</th></tr></thead>
+    <tbody>${top3.map(a=>`<tr><td>${a.date}</td><td>${a.advertiser}</td><td>${a.metric}</td><td><span class="badge ${a.severity}">${a.severity}</span></td></tr>`).join("")}</tbody></table>
+    <h4 style="margin-top:20px;">Week-over-Week KPI Change</h4>
+    <table><thead><tr><th>KPI</th><th>Change</th></tr></thead><tbody>
+      <tr><td>Prevalence</td><td>${kpiChange.prevalence>=0?'+':''}${kpiChange.prevalence.toFixed(1)}%</td></tr>
+      <tr><td>False Positive Rate</td><td>${kpiChange.fpr>=0?'+':''}${kpiChange.fpr.toFixed(1)}%</td></tr>
+      <tr><td>Action Rate</td><td>${kpiChange.actionRate>=0?'+':''}${kpiChange.actionRate.toFixed(1)}%</td></tr>
+      <tr><td>Precision</td><td>${kpiChange.precision>=0?'+':''}${kpiChange.precision.toFixed(1)}%</td></tr>
+    </tbody></table>
+    <h4 style="margin-top:20px;">Root Cause: Category Contribution</h4>
+    <p>${topCat[0]} contributed <b>${topCatPct}%</b> of all confirmed violations in the last 7 days.</p>
+    <div class="report-summary" id="summaryText">${summary}</div>
+    <button id="copyBtn" style="margin-top:12px;">Copy Summary</button>
+  `;
+  document.getElementById("copyBtn").addEventListener("click", ()=>{
+    navigator.clipboard.writeText(summary);
+    document.getElementById("copyBtn").textContent = "Copied!";
+    setTimeout(()=>document.getElementById("copyBtn").textContent="Copy Summary", 1500);
+  });
+});
+
+// ---------- 5. DRILL-DOWN EXPLORER ----------
+let activeCats = new Set(CATEGORIES);
+const chipContainer = document.getElementById("catChips");
+CATEGORIES.forEach(cat=>{
+  const chip = document.createElement("div");
+  chip.className = "chip active"; chip.textContent = cat;
+  chip.addEventListener("click", ()=>{
+    if(activeCats.has(cat)){ activeCats.delete(cat); chip.classList.remove("active"); }
+    else { activeCats.add(cat); chip.classList.add("active"); }
+    renderExplorer();
+  });
+  chipContainer.appendChild(chip);
+});
+document.getElementById("anomalyOnly").addEventListener("change", renderExplorer);
+
+const anomalyKeySet = new Set(anomalies.map(a=>a.date+"|"+a.advertiser));
+
+let explorerBarChart;
+function renderExplorer(){
+  const anomalyOnly = document.getElementById("anomalyOnly").checked;
+  let filtered = DATA.filter(r=> activeCats.has(r.advertiser_category));
+  if(anomalyOnly) filtered = filtered.filter(r=> anomalyKeySet.has(r.date+"|"+r.advertiser_id));
+  filtered = filtered.sort((a,b)=>b.date.localeCompare(a.date)).slice(0,300);
+
+  const byCat = {};
+  filtered.forEach(r=> byCat[r.advertiser_category] = (byCat[r.advertiser_category]||0) + r.confirmed_violations);
+  const ctx = document.getElementById("explorerBarChart");
+  if(explorerBarChart) explorerBarChart.destroy();
+  explorerBarChart = new Chart(ctx, {
+    type:'bar',
+    data:{ labels: Object.keys(byCat), datasets:[{label:"Confirmed Violations", data:Object.values(byCat),
+      backgroundColor:["#4d8dff","#3ecf8e","#f5b942","#ef5757"]}]},
+    options:{ plugins:{legend:{display:false}}, scales:{ x:{ticks:{color:'#8b9bc1'}}, y:{ticks:{color:'#8b9bc1'}, grid:{color:'#22304d'}} } }
+  });
+
+  const tbody = document.querySelector("#explorerTable tbody");
+  tbody.innerHTML = "";
+  filtered.slice(0,150).forEach(r=>{
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${r.date}</td><td>${r.advertiser_id}</td><td>${r.advertiser_category}</td>
+      <td>$${r.ad_spend.toLocaleString()}</td><td>${r.impressions.toLocaleString()}</td>
+      <td>${r.confirmed_violations}</td><td>${r.false_positive_flags}</td><td>${r.action_taken_count}</td>`;
+    tbody.appendChild(tr);
+  });
+}
+renderExplorer();
+
+// ---------- SIDEBAR NAV ----------
+document.querySelectorAll(".navitem").forEach(item=>{
+  item.addEventListener("click", ()=>{
+    document.querySelectorAll(".navitem").forEach(n=>n.classList.remove("active"));
+    item.classList.add("active");
+    document.getElementById(item.dataset.target).scrollIntoView({behavior:"smooth"});
+  });
+});
+</script>
+</body>
+</html>
